@@ -1,13 +1,10 @@
-import asyncio
-import sys
-
-if sys.platform.startswith("win"):
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
+import os
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 import re
-import time
+
+# Force Playwright to use system Chromium (Streamlit Cloud)
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
 
 BASE = "https://www.magicbricks.com"
 
@@ -36,7 +33,7 @@ def clean_area(val):
 
 # ---------------- MAIN SCRAPER ---------------- #
 
-def scrape_magicbricks(city="Noida", limit=20, headless=True):
+def scrape_magicbricks(city="Noida", limit=10):
 
     url = f"{BASE}/property-for-sale/residential-real-estate?cityName={city}"
 
@@ -44,24 +41,40 @@ def scrape_magicbricks(city="Noida", limit=20, headless=True):
 
     with sync_playwright() as p:
 
-        browser = p.chromium.launch(headless=headless)
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-blink-features=AutomationControlled"
+            ]
+        )
 
         context = browser.new_context(
             user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "Mozilla/5.0 (X11; Linux x86_64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/121.0.0.0 Safari/537.36"
             )
         )
 
+        # Speed boost: block images + fonts
+        context.route(
+            "**/*",
+            lambda route, request:
+                route.abort() if request.resource_type in ["image", "font"]
+                else route.continue_()
+        )
+
         page = context.new_page()
         page.goto(url, timeout=60000)
-        page.wait_for_timeout(5000)
+        page.wait_for_load_state("networkidle")
 
-        # Scroll for lazy loading
+        # Scroll to load cards
         for _ in range(4):
             page.mouse.wheel(0, 5000)
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(1500)
 
         soup = BeautifulSoup(page.content(), "lxml")
 
@@ -92,7 +105,7 @@ def scrape_magicbricks(city="Noida", limit=20, headless=True):
 
                 detail_page = context.new_page()
                 detail_page.goto(link, timeout=40000)
-                detail_page.wait_for_timeout(3000)
+                detail_page.wait_for_load_state("networkidle")
 
                 detail_html = detail_page.content()
                 detail_page.close()
