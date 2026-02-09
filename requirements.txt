@@ -1,0 +1,13 @@
+streamlit
+pandas
+requests
+beautifulsoup4
+folium
+streamlit-folium
+plotly
+openpyxl
+geopy
+tenacity
+lxml
+playwright
+
